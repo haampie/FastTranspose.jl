@@ -6,7 +6,7 @@ It's a recursive cache-oblivious algorithm, with a kernel that exploits AVX2.
 
 Install using `] add https://github.com/haampie/FastTranspose.jl.git` in the REPL.
 
-## Matrices of size 4096 x 4096
+## Example 1: Matrices of size 4096 x 4096
 
 For matrices of order 4096 FastTranpose is 2.8x slower than memcpy and 9.9x faster than Julia's implementation.
 
@@ -55,7 +55,7 @@ BenchmarkTools.Trial:
   evals/sample:     1
 ```
 
-## Very large matrices
+## Example 2: Very large matrices
 
 For matrices of size `12234 x 13455`, it seems 3.9x slower than a memcpy, and 4.5x faster than Julia's implementation.
 
