@@ -1,6 +1,6 @@
 # FastTranspose.jl
 
-Experiment to transpose matrices of `Float64` out of place really fast for CPUs that support AVX2. Probably something similar can be done for `Float32`.
+Experiment to transpose matrices of `Float32` and `Float64` out of place really fast for CPUs that support AVX2.
 
 It's a recursive cache-oblivious algorithm, with a kernel that exploits AVX2.
 

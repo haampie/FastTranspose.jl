@@ -49,6 +49,57 @@ function transpose_avx_multiples_of_four!(B::AbstractMatrix{Float64}, A::Abstrac
     return B
 end
 
+function transpose_avx_multiples_of_eight!(B::AbstractMatrix{Float32}, A::AbstractMatrix{Float32})
+
+    m, n = size(A)
+
+    Ac = canonicalize(A)
+    Bc = canonicalize(B)
+
+    sA = stride(Ac, 2)
+    sB = stride(Bc, 2)
+
+    @inbounds for i = Base.OneTo(m ÷ 8)
+        pA = pointer(A) + 8(i - 1) * sizeof(Float32)
+        pB = pointer(B) + 8(i - 1) * sB * sizeof(Float32)
+
+        for j = Base.OneTo(n ÷ 8)
+            
+            v1 = vload(SVec{8,Float32}, pA + 0 * sA * sizeof(Float32))
+            v2 = vload(SVec{8,Float32}, pA + 1 * sA * sizeof(Float32))
+            v3 = vload(SVec{8,Float32}, pA + 2 * sA * sizeof(Float32))
+            v4 = vload(SVec{8,Float32}, pA + 3 * sA * sizeof(Float32))
+            v5 = vload(SVec{8,Float32}, pA + 4 * sA * sizeof(Float32))
+            v6 = vload(SVec{8,Float32}, pA + 5 * sA * sizeof(Float32))
+            v7 = vload(SVec{8,Float32}, pA + 6 * sA * sizeof(Float32))
+            v8 = vload(SVec{8,Float32}, pA + 7 * sA * sizeof(Float32))
+
+            w1 = SVec{8,Float32}(v1[1], v2[1], v3[1], v4[1], v5[1], v6[1], v7[1], v8[1])
+            w2 = SVec{8,Float32}(v1[2], v2[2], v3[2], v4[2], v5[2], v6[2], v7[2], v8[2])
+            w3 = SVec{8,Float32}(v1[3], v2[3], v3[3], v4[3], v5[3], v6[3], v7[3], v8[3])
+            w4 = SVec{8,Float32}(v1[4], v2[4], v3[4], v4[4], v5[4], v6[4], v7[4], v8[4])
+            w5 = SVec{8,Float32}(v1[5], v2[5], v3[5], v4[5], v5[5], v6[5], v7[5], v8[5])
+            w6 = SVec{8,Float32}(v1[6], v2[6], v3[6], v4[6], v5[6], v6[6], v7[6], v8[6])
+            w7 = SVec{8,Float32}(v1[7], v2[7], v3[7], v4[7], v5[7], v6[7], v7[7], v8[7])
+            w8 = SVec{8,Float32}(v1[8], v2[8], v3[8], v4[8], v5[8], v6[8], v7[8], v8[8])
+
+            vstore!(pB + 0 * sB * sizeof(Float32), w1)
+            vstore!(pB + 1 * sB * sizeof(Float32), w2)
+            vstore!(pB + 2 * sB * sizeof(Float32), w3)
+            vstore!(pB + 3 * sB * sizeof(Float32), w4)
+            vstore!(pB + 4 * sB * sizeof(Float32), w5)
+            vstore!(pB + 5 * sB * sizeof(Float32), w6)
+            vstore!(pB + 6 * sB * sizeof(Float32), w7)
+            vstore!(pB + 7 * sB * sizeof(Float32), w8)
+
+            pA += 8 * sA * sizeof(Float32)
+            pB += 8 * sizeof(Float32)
+        end
+    end
+
+    return B
+end
+
 # todo, clean this madness up
 function transpose_avx!(B::AbstractMatrix{Float64}, A::AbstractMatrix{Float64})
 
@@ -126,15 +177,13 @@ function transpose_avx!(B::AbstractMatrix{Float64}, A::AbstractMatrix{Float64})
     return B
 end
 
-divisable_by_4(k) = rem(k, 4) == 0
-
 power_of_two_smaller_than_or_equal_to(k::T) where {T} = (1 << (8sizeof(T) - leading_zeros(k) - 1)) % Int
 
 function recursive_transpose!(A::AbstractMatrix, B::AbstractMatrix, b::Val{blocksize} = Val(32)) where blocksize
     m, n = size(A)
 
     if max(m, n) ≤ blocksize
-        if divisable_by_4(m) && divisable_by_4(n)
+        if rem(m, 4) == rem(n, 4) == 0
             transpose_avx_multiples_of_four!(A, B)
         else
             transpose_avx!(A, B)
@@ -147,6 +196,31 @@ function recursive_transpose!(A::AbstractMatrix, B::AbstractMatrix, b::Val{block
         else
             recursive_transpose!(view(A, :, 1:k), view(B, 1:k, :), b)
             recursive_transpose!(view(A, :, k+1:n), view(B, k+1:n, :), b)
+        end
+    end
+
+    return nothing
+end
+
+function recursive_transpose!(A::AbstractMatrix{Float32}, B::AbstractMatrix{Float32}, b::Val{blocksize} = Val(32)) where blocksize
+    @assert rem(size(B, 1), 8) == 0
+    @assert rem(size(B, 2), 8) == 0
+    recursive_transpose_impl!(A, B, b)
+end
+
+function recursive_transpose_impl!(A::AbstractMatrix{Float32}, B::AbstractMatrix{Float32}, b::Val{blocksize}) where blocksize
+    m, n = size(A)
+
+    if max(m, n) ≤ blocksize
+        transpose_avx_multiples_of_eight!(A, B)
+    else
+        k = power_of_two_smaller_than_or_equal_to(max(m, n) ÷ 2)
+        if m > n
+            recursive_transpose_impl!(view(A, 1:k, :), view(B, :, 1:k), b)
+            recursive_transpose_impl!(view(A, k+1:m, :), view(B, :, k+1:m), b)
+        else
+            recursive_transpose_impl!(view(A, :, 1:k), view(B, 1:k, :), b)
+            recursive_transpose_impl!(view(A, :, k+1:n), view(B, k+1:n, :), b)
         end
     end
 
