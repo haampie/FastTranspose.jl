@@ -4,6 +4,8 @@ Experiment to transpose matrices of `Float32` and `Float64` out of place really 
 
 It's a recursive cache-oblivious algorithm, with a kernel that exploits AVX2.
 
+Currently single-threaded, outperforms single-threaded MKL (truth it does not parallelize well, because it's memory-bound).
+
 Install using `] add https://github.com/haampie/FastTranspose.jl.git` in the REPL.
 
 ## Example 1: Matrices of size 4096 x 4096
@@ -53,6 +55,15 @@ BenchmarkTools.Trial:
   --------------
   samples:          25
   evals/sample:     1
+```
+
+In this case FastTranspose.jl is roughly 1.7x faster than MKL (both single-threaded):
+
+```julia
+julia> include("path/to/FastTranspose.jl/benchmark/mkl.jl")
+
+julia> julia> bench(4096)
+(Trial(36.533 ms), Trial(20.895 ms)) # (mkl, ours)
 ```
 
 ## Example 2: Very large matrices
