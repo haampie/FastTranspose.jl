@@ -10,7 +10,7 @@ const Vec64_4 = SVec{4,Float64}
 canonicalize(A) = A
 canonicalize(A::Union{<:SubArray}) = canonicalize(parent(A))
 
-function transpose_avx_multiples_of_four!(B::AbstractMatrix{Float64}, A::AbstractMatrix{Float64})
+function kernel64!(B::AbstractMatrix{Float64}, A::AbstractMatrix{Float64}, scaling)
 
     m, n = size(A)
 
@@ -26,23 +26,118 @@ function transpose_avx_multiples_of_four!(B::AbstractMatrix{Float64}, A::Abstrac
 
         for j = Base.OneTo(n ÷ 4)
             
-            v1 = vload(SVec{4,Float64}, pA + 0 * sA * sizeof(Float64))
-            v2 = vload(SVec{4,Float64}, pA + 1 * sA * sizeof(Float64))
-            v3 = vload(SVec{4,Float64}, pA + 2 * sA * sizeof(Float64))
-            v4 = vload(SVec{4,Float64}, pA + 3 * sA * sizeof(Float64))
+            v00 = vload(SVec{4,Float64}, pA + 0 * sA * sizeof(Float64))
+            v01 = vload(SVec{4,Float64}, pA + 1 * sA * sizeof(Float64))
+            v02 = vload(SVec{4,Float64}, pA + 2 * sA * sizeof(Float64))
+            v03 = vload(SVec{4,Float64}, pA + 3 * sA * sizeof(Float64))
 
-            w1 = SVec{4,Float64}(v1[1], v2[1], v3[1], v4[1])
-            w2 = SVec{4,Float64}(v1[2], v2[2], v3[2], v4[2])
-            w3 = SVec{4,Float64}(v1[3], v2[3], v3[3], v4[3])
-            w4 = SVec{4,Float64}(v1[4], v2[4], v3[4], v4[4])
+            v04 = SIMDPirates.shufflevector(v00, v01, Val{(0, 4, 2, 6)}())
+            v05 = SIMDPirates.shufflevector(v00, v01, Val{(1, 5, 3, 7)}())
+            v06 = SIMDPirates.shufflevector(v02, v03, Val{(0, 4, 2, 6)}())
+            v07 = SIMDPirates.shufflevector(v02, v03, Val{(1, 5, 3, 7)}())
+            v08 = SIMDPirates.shufflevector(v04, v06, Val{(0, 1, 4, 5)}())
+            v09 = SIMDPirates.shufflevector(v05, v07, Val{(0, 1, 4, 5)}())
+            v10 = SIMDPirates.shufflevector(v04, v06, Val{(2, 3, 6, 7)}())
+            v11 = SIMDPirates.shufflevector(v05, v07, Val{(2, 3, 6, 7)}())
 
-            vstore!(pB + 0 * sB * sizeof(Float64), w1)
-            vstore!(pB + 1 * sB * sizeof(Float64), w2)
-            vstore!(pB + 2 * sB * sizeof(Float64), w3)
-            vstore!(pB + 3 * sB * sizeof(Float64), w4)
+            v12 = scaling * v08
+            v13 = scaling * v09
+            v14 = scaling * v10
+            v15 = scaling * v11
+
+            vstore!(pB + 0 * sB * sizeof(Float64), v12)
+            vstore!(pB + 1 * sB * sizeof(Float64), v13)
+            vstore!(pB + 2 * sB * sizeof(Float64), v14)
+            vstore!(pB + 3 * sB * sizeof(Float64), v15)
 
             pA += 4 * sA * sizeof(Float64)
             pB += 4 * sizeof(Float64)
+        end
+    end
+
+    return B
+end
+
+# Todo, clean up ... the cleanup business
+function kernel64_with_cleanup!(B::AbstractMatrix{Float64}, A::AbstractMatrix{Float64}, scaling)
+
+    m, n = size(A)
+
+    Ac = canonicalize(A)
+    Bc = canonicalize(B)
+
+    sA = stride(Ac, 2)
+    sB = stride(Bc, 2)
+
+    i = 1
+    @inbounds begin
+        while i + 4 ≤ m
+            pA = pointer(A) + (i - 1) * sizeof(Float64)
+            pB = pointer(B) + (i - 1) * sB * sizeof(Float64)
+
+            j = 1
+            while j + 4 ≤ n
+                v00 = vload(SVec{4,Float64}, pA + 0 * sA * sizeof(Float64))
+                v01 = vload(SVec{4,Float64}, pA + 1 * sA * sizeof(Float64))
+                v02 = vload(SVec{4,Float64}, pA + 2 * sA * sizeof(Float64))
+                v03 = vload(SVec{4,Float64}, pA + 3 * sA * sizeof(Float64))
+    
+                v04 = SIMDPirates.shufflevector(v00, v01, Val{(0, 4, 2, 6)}())
+                v05 = SIMDPirates.shufflevector(v00, v01, Val{(1, 5, 3, 7)}())
+                v06 = SIMDPirates.shufflevector(v02, v03, Val{(0, 4, 2, 6)}())
+                v07 = SIMDPirates.shufflevector(v02, v03, Val{(1, 5, 3, 7)}())
+                v08 = SIMDPirates.shufflevector(v04, v06, Val{(0, 1, 4, 5)}())
+                v09 = SIMDPirates.shufflevector(v05, v07, Val{(0, 1, 4, 5)}())
+                v10 = SIMDPirates.shufflevector(v04, v06, Val{(2, 3, 6, 7)}())
+                v11 = SIMDPirates.shufflevector(v05, v07, Val{(2, 3, 6, 7)}())
+    
+                v12 = scaling * v08
+                v13 = scaling * v09
+                v14 = scaling * v10
+                v15 = scaling * v11
+    
+                vstore!(pB + 0 * sB * sizeof(Float64), v12)
+                vstore!(pB + 1 * sB * sizeof(Float64), v13)
+                vstore!(pB + 2 * sB * sizeof(Float64), v14)
+                vstore!(pB + 3 * sB * sizeof(Float64), v15)
+
+                pA += 4 * sA * sizeof(Float64)
+                pB += 4 * sizeof(Float64)
+                j += 4
+            end
+
+            while j ≤ n
+                B[j, i + 0] = scaling * A[i + 0, j]
+                B[j, i + 1] = scaling * A[i + 1, j]
+                B[j, i + 2] = scaling * A[i + 2, j]
+                B[j, i + 3] = scaling * A[i + 3, j]
+
+                j += 1
+            end
+
+            i += 4
+        end
+
+        while i ≤ m
+            pA = pointer(A) + (i - 1) * sizeof(Float64)
+            pB = pointer(B) + (i - 1) * sB * sizeof(Float64)
+
+            j = 1
+            while j + 4 ≤ n
+                B[j + 0, i] = scaling * A[i, j + 0]
+                B[j + 1, i] = scaling * A[i, j + 1]
+                B[j + 2, i] = scaling * A[i, j + 2]
+                B[j + 3, i] = scaling * A[i, j + 3]
+
+                j += 4
+            end
+
+            while j ≤ n
+                B[j, i] = scaling * A[i, j]
+                j += 1
+            end
+
+            i += 1
         end
     end
 
@@ -100,102 +195,25 @@ function transpose_avx_multiples_of_eight!(B::AbstractMatrix{Float32}, A::Abstra
     return B
 end
 
-# todo, clean this madness up
-function transpose_avx!(B::AbstractMatrix{Float64}, A::AbstractMatrix{Float64})
-
-    m, n = size(A)
-
-    Ac = canonicalize(A)
-    Bc = canonicalize(B)
-
-    sA = stride(Ac, 2)
-    sB = stride(Bc, 2)
-
-    i = 1
-    @inbounds begin
-        while i + 4 ≤ m
-            pA = pointer(A) + (i - 1) * sizeof(Float64)
-            pB = pointer(B) + (i - 1) * sB * sizeof(Float64)
-
-            j = 1
-            while j + 4 ≤ n
-                v1 = vload(SVec{4,Float64}, pA + 0 * sA * sizeof(Float64))
-                v2 = vload(SVec{4,Float64}, pA + 1 * sA * sizeof(Float64))
-                v3 = vload(SVec{4,Float64}, pA + 2 * sA * sizeof(Float64))
-                v4 = vload(SVec{4,Float64}, pA + 3 * sA * sizeof(Float64))
-
-                w1 = SVec{4,Float64}(v1[1], v2[1], v3[1], v4[1])
-                w2 = SVec{4,Float64}(v1[2], v2[2], v3[2], v4[2])
-                w3 = SVec{4,Float64}(v1[3], v2[3], v3[3], v4[3])
-                w4 = SVec{4,Float64}(v1[4], v2[4], v3[4], v4[4])
-
-                vstore!(pB + 0 * sB * sizeof(Float64), w1)
-                vstore!(pB + 1 * sB * sizeof(Float64), w2)
-                vstore!(pB + 2 * sB * sizeof(Float64), w3)
-                vstore!(pB + 3 * sB * sizeof(Float64), w4)
-
-                pA += 4 * sA * sizeof(Float64)
-                pB += 4 * sizeof(Float64)
-                j += 4
-            end
-
-            while j ≤ n
-                B[j, i + 0] = A[i + 0, j]
-                B[j, i + 1] = A[i + 1, j]
-                B[j, i + 2] = A[i + 2, j]
-                B[j, i + 3] = A[i + 3, j]
-
-                j += 1
-            end
-
-            i += 4
-        end
-
-        while i ≤ m
-            pA = pointer(A) + (i - 1) * sizeof(Float64)
-            pB = pointer(B) + (i - 1) * sB * sizeof(Float64)
-
-            j = 1
-            while j + 4 ≤ n
-                B[j + 0, i] = A[i, j + 0]
-                B[j + 1, i] = A[i, j + 1]
-                B[j + 2, i] = A[i, j + 2]
-                B[j + 3, i] = A[i, j + 3]
-
-                j += 4
-            end
-
-            while j ≤ n
-                B[j, i] = A[i, j]
-                j += 1
-            end
-
-            i += 1
-        end
-    end
-
-    return B
-end
-
 power_of_two_smaller_than_or_equal_to(k::T) where {T} = (1 << (8sizeof(T) - leading_zeros(k) - 1)) % Int
 
-function recursive_transpose!(A::AbstractMatrix, B::AbstractMatrix, b::Val{blocksize} = Val(32)) where blocksize
+function recursive_transpose!(A::AbstractMatrix{T}, B::AbstractMatrix, scaling = one(T), b::Val{blocksize} = Val(32)) where {T,blocksize}
     m, n = size(A)
 
     if max(m, n) ≤ blocksize
         if rem(m, 4) == rem(n, 4) == 0
-            transpose_avx_multiples_of_four!(A, B)
+            kernel64!(A, B, scaling)
         else
-            transpose_avx!(A, B)
+            kernel64_with_cleanup!(A, B, scaling)
         end
     else
         k = power_of_two_smaller_than_or_equal_to(max(m, n) ÷ 2)
         if m > n
-            recursive_transpose!(view(A, 1:k, :), view(B, :, 1:k), b)
-            recursive_transpose!(view(A, k+1:m, :), view(B, :, k+1:m), b)
+            recursive_transpose!(view(A, 1:k, :), view(B, :, 1:k), scaling, b)
+            recursive_transpose!(view(A, k+1:m, :), view(B, :, k+1:m), scaling, b)
         else
-            recursive_transpose!(view(A, :, 1:k), view(B, 1:k, :), b)
-            recursive_transpose!(view(A, :, k+1:n), view(B, k+1:n, :), b)
+            recursive_transpose!(view(A, :, 1:k), view(B, 1:k, :), scaling, b)
+            recursive_transpose!(view(A, :, k+1:n), view(B, k+1:n, :), scaling, b)
         end
     end
 
