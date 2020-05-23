@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.com/haampie/FastTranspose.jl.svg?branch=master)](https://travis-ci.com/haampie/FastTranspose.jl)
+
 # FastTranspose.jl
 
 Experiment to transpose matrices of `Float32` and `Float64` out of place really fast for CPUs that support AVX2.
