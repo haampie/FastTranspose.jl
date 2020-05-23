@@ -4,7 +4,7 @@ Experiment to transpose matrices of `Float32` and `Float64` out of place really 
 
 It's a recursive cache-oblivious algorithm, with a kernel that exploits AVX2.
 
-Currently single-threaded, outperforms single-threaded MKL (truth it does not parallelize well, because it's memory-bound).
+Currently single-threaded, outperforms single-threaded MKL (it does not scale to multiple threads as it's memory-bound).
 
 Install using `] add https://github.com/haampie/FastTranspose.jl.git` in the REPL.
 
