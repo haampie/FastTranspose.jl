@@ -2,7 +2,7 @@ module FastTranspose
 
 export recursive_transpose!
 
-using SIMDPirates
+using SIMDPirates: shufflevector, SVec, vload, vstore!
 
 const Vec64_2 = SVec{2,Float64}
 const Vec64_4 = SVec{4,Float64}
@@ -31,14 +31,14 @@ function kernel64!(B::AbstractMatrix{Float64}, A::AbstractMatrix{Float64}, scali
             v02 = vload(SVec{4,Float64}, pA + 2 * sA * sizeof(Float64))
             v03 = vload(SVec{4,Float64}, pA + 3 * sA * sizeof(Float64))
 
-            v04 = SIMDPirates.shufflevector(v00, v01, Val{(0, 4, 2, 6)}())
-            v05 = SIMDPirates.shufflevector(v00, v01, Val{(1, 5, 3, 7)}())
-            v06 = SIMDPirates.shufflevector(v02, v03, Val{(0, 4, 2, 6)}())
-            v07 = SIMDPirates.shufflevector(v02, v03, Val{(1, 5, 3, 7)}())
-            v08 = SIMDPirates.shufflevector(v04, v06, Val{(0, 1, 4, 5)}())
-            v09 = SIMDPirates.shufflevector(v05, v07, Val{(0, 1, 4, 5)}())
-            v10 = SIMDPirates.shufflevector(v04, v06, Val{(2, 3, 6, 7)}())
-            v11 = SIMDPirates.shufflevector(v05, v07, Val{(2, 3, 6, 7)}())
+            v04 = shufflevector(v00, v01, Val{(0, 4, 2, 6)}())
+            v05 = shufflevector(v00, v01, Val{(1, 5, 3, 7)}())
+            v06 = shufflevector(v02, v03, Val{(0, 4, 2, 6)}())
+            v07 = shufflevector(v02, v03, Val{(1, 5, 3, 7)}())
+            v08 = shufflevector(v04, v06, Val{(0, 1, 4, 5)}())
+            v09 = shufflevector(v05, v07, Val{(0, 1, 4, 5)}())
+            v10 = shufflevector(v04, v06, Val{(2, 3, 6, 7)}())
+            v11 = shufflevector(v05, v07, Val{(2, 3, 6, 7)}())
 
             v12 = scaling * v08
             v13 = scaling * v09
@@ -52,6 +52,132 @@ function kernel64!(B::AbstractMatrix{Float64}, A::AbstractMatrix{Float64}, scali
 
             pA += 4 * sA * sizeof(Float64)
             pB += 4 * sizeof(Float64)
+        end
+    end
+
+    return B
+end
+
+function kernel64_unrolled!(B::AbstractMatrix{Float64}, A::AbstractMatrix{Float64}, scaling)
+
+    m, n = size(A)
+
+    Ac = canonicalize(A)
+    Bc = canonicalize(B)
+
+    sA = stride(Ac, 2)
+    sB = stride(Bc, 2)
+
+    @inbounds for i = Base.OneTo(m ÷ 8)
+        pA = pointer(A) + 8(i - 1) * sizeof(Float64)
+        pB = pointer(B) + 8(i - 1) * sB * sizeof(Float64)
+
+        for j = Base.OneTo(n ÷ 8)
+
+            ## 11
+            
+            v00 = vload(SVec{4,Float64}, pA + 0 * sA * sizeof(Float64))
+            v01 = vload(SVec{4,Float64}, pA + 1 * sA * sizeof(Float64))
+            v02 = vload(SVec{4,Float64}, pA + 2 * sA * sizeof(Float64))
+            v03 = vload(SVec{4,Float64}, pA + 3 * sA * sizeof(Float64))
+
+            v04 = shufflevector(v00, v01, Val{(0, 4, 2, 6)}())
+            v05 = shufflevector(v00, v01, Val{(1, 5, 3, 7)}())
+            v06 = shufflevector(v02, v03, Val{(0, 4, 2, 6)}())
+            v07 = shufflevector(v02, v03, Val{(1, 5, 3, 7)}())
+            v08 = shufflevector(v04, v06, Val{(0, 1, 4, 5)}())
+            v09 = shufflevector(v05, v07, Val{(0, 1, 4, 5)}())
+            v10 = shufflevector(v04, v06, Val{(2, 3, 6, 7)}())
+            v11 = shufflevector(v05, v07, Val{(2, 3, 6, 7)}())
+
+            v12 = scaling * v08
+            v13 = scaling * v09
+            v14 = scaling * v10
+            v15 = scaling * v11
+
+            vstore!(pB + 0 * sB * sizeof(Float64), v12)
+            vstore!(pB + 1 * sB * sizeof(Float64), v13)
+            vstore!(pB + 2 * sB * sizeof(Float64), v14)
+            vstore!(pB + 3 * sB * sizeof(Float64), v15)
+
+            ## 12
+            
+            v00 = vload(SVec{4,Float64}, pA + 4 * sA * sizeof(Float64))
+            v01 = vload(SVec{4,Float64}, pA + 5 * sA * sizeof(Float64))
+            v02 = vload(SVec{4,Float64}, pA + 6 * sA * sizeof(Float64))
+            v03 = vload(SVec{4,Float64}, pA + 7 * sA * sizeof(Float64))
+
+            v04 = shufflevector(v00, v01, Val{(0, 4, 2, 6)}())
+            v05 = shufflevector(v00, v01, Val{(1, 5, 3, 7)}())
+            v06 = shufflevector(v02, v03, Val{(0, 4, 2, 6)}())
+            v07 = shufflevector(v02, v03, Val{(1, 5, 3, 7)}())
+            v08 = shufflevector(v04, v06, Val{(0, 1, 4, 5)}())
+            v09 = shufflevector(v05, v07, Val{(0, 1, 4, 5)}())
+            v10 = shufflevector(v04, v06, Val{(2, 3, 6, 7)}())
+            v11 = shufflevector(v05, v07, Val{(2, 3, 6, 7)}())
+
+            v12 = scaling * v08
+            v13 = scaling * v09
+            v14 = scaling * v10
+            v15 = scaling * v11
+
+            vstore!(pB + (0 * sB + 4) * sizeof(Float64), v12)
+            vstore!(pB + (1 * sB + 4) * sizeof(Float64), v13)
+            vstore!(pB + (2 * sB + 4) * sizeof(Float64), v14)
+            vstore!(pB + (3 * sB + 4) * sizeof(Float64), v15)
+
+            ## 21
+            
+            v00 = vload(SVec{4,Float64}, pA + (0 * sA + 4) * sizeof(Float64))
+            v01 = vload(SVec{4,Float64}, pA + (1 * sA + 4) * sizeof(Float64))
+            v02 = vload(SVec{4,Float64}, pA + (2 * sA + 4) * sizeof(Float64))
+            v03 = vload(SVec{4,Float64}, pA + (3 * sA + 4) * sizeof(Float64))
+
+            v04 = shufflevector(v00, v01, Val{(0, 4, 2, 6)}())
+            v05 = shufflevector(v00, v01, Val{(1, 5, 3, 7)}())
+            v06 = shufflevector(v02, v03, Val{(0, 4, 2, 6)}())
+            v07 = shufflevector(v02, v03, Val{(1, 5, 3, 7)}())
+            v08 = shufflevector(v04, v06, Val{(0, 1, 4, 5)}())
+            v09 = shufflevector(v05, v07, Val{(0, 1, 4, 5)}())
+            v10 = shufflevector(v04, v06, Val{(2, 3, 6, 7)}())
+            v11 = shufflevector(v05, v07, Val{(2, 3, 6, 7)}())
+
+            v12 = scaling * v08
+            v13 = scaling * v09
+            v14 = scaling * v10
+            v15 = scaling * v11
+
+            vstore!(pB + 4 * sB * sizeof(Float64), v12)
+            vstore!(pB + 5 * sB * sizeof(Float64), v13)
+            vstore!(pB + 6 * sB * sizeof(Float64), v14)
+            vstore!(pB + 7 * sB * sizeof(Float64), v15)
+            
+            v00 = vload(SVec{4,Float64}, pA + (4 * sA + 4) * sizeof(Float64))
+            v01 = vload(SVec{4,Float64}, pA + (5 * sA + 4) * sizeof(Float64))
+            v02 = vload(SVec{4,Float64}, pA + (6 * sA + 4) * sizeof(Float64))
+            v03 = vload(SVec{4,Float64}, pA + (7 * sA + 4) * sizeof(Float64))
+
+            v04 = shufflevector(v00, v01, Val{(0, 4, 2, 6)}())
+            v05 = shufflevector(v00, v01, Val{(1, 5, 3, 7)}())
+            v06 = shufflevector(v02, v03, Val{(0, 4, 2, 6)}())
+            v07 = shufflevector(v02, v03, Val{(1, 5, 3, 7)}())
+            v08 = shufflevector(v04, v06, Val{(0, 1, 4, 5)}())
+            v09 = shufflevector(v05, v07, Val{(0, 1, 4, 5)}())
+            v10 = shufflevector(v04, v06, Val{(2, 3, 6, 7)}())
+            v11 = shufflevector(v05, v07, Val{(2, 3, 6, 7)}())
+
+            v12 = scaling * v08
+            v13 = scaling * v09
+            v14 = scaling * v10
+            v15 = scaling * v11
+
+            vstore!(pB + (4 * sB + 4) * sizeof(Float64), v12)
+            vstore!(pB + (5 * sB + 4) * sizeof(Float64), v13)
+            vstore!(pB + (6 * sB + 4) * sizeof(Float64), v14)
+            vstore!(pB + (7 * sB + 4) * sizeof(Float64), v15)
+
+            pA += 8 * sA * sizeof(Float64)
+            pB += 8 * sizeof(Float64)
         end
     end
 
@@ -82,14 +208,14 @@ function kernel64_with_cleanup!(B::AbstractMatrix{Float64}, A::AbstractMatrix{Fl
                 v02 = vload(SVec{4,Float64}, pA + 2 * sA * sizeof(Float64))
                 v03 = vload(SVec{4,Float64}, pA + 3 * sA * sizeof(Float64))
     
-                v04 = SIMDPirates.shufflevector(v00, v01, Val{(0, 4, 2, 6)}())
-                v05 = SIMDPirates.shufflevector(v00, v01, Val{(1, 5, 3, 7)}())
-                v06 = SIMDPirates.shufflevector(v02, v03, Val{(0, 4, 2, 6)}())
-                v07 = SIMDPirates.shufflevector(v02, v03, Val{(1, 5, 3, 7)}())
-                v08 = SIMDPirates.shufflevector(v04, v06, Val{(0, 1, 4, 5)}())
-                v09 = SIMDPirates.shufflevector(v05, v07, Val{(0, 1, 4, 5)}())
-                v10 = SIMDPirates.shufflevector(v04, v06, Val{(2, 3, 6, 7)}())
-                v11 = SIMDPirates.shufflevector(v05, v07, Val{(2, 3, 6, 7)}())
+                v04 = shufflevector(v00, v01, Val{(0, 4, 2, 6)}())
+                v05 = shufflevector(v00, v01, Val{(1, 5, 3, 7)}())
+                v06 = shufflevector(v02, v03, Val{(0, 4, 2, 6)}())
+                v07 = shufflevector(v02, v03, Val{(1, 5, 3, 7)}())
+                v08 = shufflevector(v04, v06, Val{(0, 1, 4, 5)}())
+                v09 = shufflevector(v05, v07, Val{(0, 1, 4, 5)}())
+                v10 = shufflevector(v04, v06, Val{(2, 3, 6, 7)}())
+                v11 = shufflevector(v05, v07, Val{(2, 3, 6, 7)}())
     
                 v12 = scaling * v08
                 v13 = scaling * v09
@@ -144,8 +270,75 @@ function kernel64_with_cleanup!(B::AbstractMatrix{Float64}, A::AbstractMatrix{Fl
     return B
 end
 
-function transpose_avx_multiples_of_eight!(B::AbstractMatrix{Float32}, A::AbstractMatrix{Float32})
+function kernel32!(B::AbstractMatrix{Float32}, A::AbstractMatrix{Float32}, scale = 1.0f0)
 
+    m, n = size(A)
+
+    Ac = canonicalize(A)
+    Bc = canonicalize(B)
+
+    sA = stride(Ac, 2) * sizeof(Float32)
+    sB = stride(Bc, 2) * sizeof(Float32)
+
+    @inbounds for i = Base.OneTo(m ÷ 8)
+        pA = pointer(A) + 8(i - 1) * sizeof(Float32)
+        pB = pointer(B) + 8(i - 1) * sB
+
+        for j = Base.OneTo(n ÷ 8)
+            v00 = vload(SVec{8,Float32}, pA + 0 * sA)
+            v01 = vload(SVec{8,Float32}, pA + 1 * sA)
+            v02 = vload(SVec{8,Float32}, pA + 2 * sA)
+            v03 = vload(SVec{8,Float32}, pA + 3 * sA)
+            v04 = vload(SVec{8,Float32}, pA + 4 * sA)
+            v05 = vload(SVec{8,Float32}, pA + 5 * sA)
+            v06 = vload(SVec{8,Float32}, pA + 6 * sA)
+            v07 = vload(SVec{8,Float32}, pA + 7 * sA)
+
+            v08 = shufflevector(v00, v01, Val{(0,  8,  2, 10,  4, 12,  6, 14)}())
+            v09 = shufflevector(v00, v01, Val{(1,  9,  3, 11,  5, 13,  7, 15)}())
+            v10 = shufflevector(v02, v03, Val{(0,  8,  2, 10,  4, 12,  6, 14)}())
+            v11 = shufflevector(v02, v03, Val{(1,  9,  3, 11,  5, 13,  7, 15)}())
+            v12 = shufflevector(v04, v05, Val{(0,  8,  2, 10,  4, 12,  6, 14)}())
+            v13 = shufflevector(v04, v05, Val{(1,  9,  3, 11,  5, 13,  7, 15)}())
+            v14 = shufflevector(v06, v07, Val{(0,  8,  2, 10,  4, 12,  6, 14)}())
+            v15 = shufflevector(v06, v07, Val{(1,  9,  3, 11,  5, 13,  7, 15)}())
+        
+            v16 = shufflevector(v08, v10, Val{(0,  1,  8,  9,  4,  5, 12, 13)}())
+            v17 = shufflevector(v08, v10, Val{(2,  3, 10, 11,  6,  7, 14, 15)}())
+            v18 = shufflevector(v09, v11, Val{(0,  1,  8,  9,  4,  5, 12, 13)}())
+            v19 = shufflevector(v09, v11, Val{(2,  3, 10, 11,  6,  7, 14, 15)}())
+            v20 = shufflevector(v12, v14, Val{(0,  1,  8,  9,  4,  5, 12, 13)}())
+            v21 = shufflevector(v12, v14, Val{(2,  3, 10, 11,  6,  7, 14, 15)}())
+            v22 = shufflevector(v13, v15, Val{(0,  1,  8,  9,  4,  5, 12, 13)}())
+            v23 = shufflevector(v13, v15, Val{(2,  3, 10, 11,  6,  7, 14, 15)}())
+        
+            v24 = shufflevector(v16, v20, Val{(0,  1,  2,  3,  8,  9, 10, 11)}())
+            v25 = shufflevector(v16, v20, Val{(4,  5,  6,  7, 12, 13, 14, 15)}())
+            v26 = shufflevector(v17, v21, Val{(0,  1,  2,  3,  8,  9, 10, 11)}())
+            v27 = shufflevector(v17, v21, Val{(4,  5,  6,  7, 12, 13, 14, 15)}())
+            v28 = shufflevector(v18, v22, Val{(0,  1,  2,  3,  8,  9, 10, 11)}())
+            v29 = shufflevector(v18, v22, Val{(4,  5,  6,  7, 12, 13, 14, 15)}())
+            v30 = shufflevector(v19, v23, Val{(0,  1,  2,  3,  8,  9, 10, 11)}())
+            v31 = shufflevector(v19, v23, Val{(4,  5,  6,  7, 12, 13, 14, 15)}())
+
+            vstore!(pB + 0 * sB, scale * v24)
+            vstore!(pB + 1 * sB, scale * v28)
+            vstore!(pB + 2 * sB, scale * v26)
+            vstore!(pB + 3 * sB, scale * v30)
+            vstore!(pB + 4 * sB, scale * v25)
+            vstore!(pB + 5 * sB, scale * v29)
+            vstore!(pB + 6 * sB, scale * v27)
+            vstore!(pB + 7 * sB, scale * v31)
+
+            pA += 8 * sA
+            pB += 8 * sizeof(Float32)
+        end
+    end
+
+    return B
+end
+
+function kernel32_old!(A, B)
     m, n = size(A)
 
     Ac = canonicalize(A)
@@ -220,6 +413,29 @@ function recursive_transpose!(A::AbstractMatrix{T}, B::AbstractMatrix, scaling =
     return nothing
 end
 
+function recursive_transpose_2!(A::AbstractMatrix{T}, B::AbstractMatrix, scaling = one(T), b::Val{blocksize} = Val(32)) where {T,blocksize}
+    m, n = size(A)
+
+    if max(m, n) ≤ blocksize
+        if rem(m, 8) == rem(n, 8) == 0
+            kernel64_unrolled!(A, B, scaling)
+        else
+            kernel64_with_cleanup!(A, B, scaling)
+        end
+    else
+        k = power_of_two_smaller_than_or_equal_to(max(m, n) ÷ 2)
+        if m > n
+            recursive_transpose_2!(view(A, 1:k, :), view(B, :, 1:k), scaling, b)
+            recursive_transpose_2!(view(A, k+1:m, :), view(B, :, k+1:m), scaling, b)
+        else
+            recursive_transpose_2!(view(A, :, 1:k), view(B, 1:k, :), scaling, b)
+            recursive_transpose_2!(view(A, :, k+1:n), view(B, k+1:n, :), scaling, b)
+        end
+    end
+
+    return nothing
+end
+
 function recursive_transpose!(A::AbstractMatrix{Float32}, B::AbstractMatrix{Float32}, b::Val{blocksize} = Val(32)) where blocksize
     @assert rem(size(B, 1), 8) == 0
     @assert rem(size(B, 2), 8) == 0
@@ -230,7 +446,7 @@ function recursive_transpose_impl!(A::AbstractMatrix{Float32}, B::AbstractMatrix
     m, n = size(A)
 
     if max(m, n) ≤ blocksize
-        transpose_avx_multiples_of_eight!(A, B)
+        kernel32!(A, B)
     else
         k = power_of_two_smaller_than_or_equal_to(max(m, n) ÷ 2)
         if m > n
